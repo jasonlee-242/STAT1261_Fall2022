@@ -1,0 +1,132 @@
+---
+title: "STAT1261/2260 Homework 7"
+author: "Jason Lee"
+date: "2022-11-2"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message = FALSE}
+library(tidyr)
+library(dplyr)
+
+#install.packages("OpenMx")
+library(OpenMx)
+data(twinData)
+twinData <- as_tibble(twinData)
+head(twinData, 6)
+```
+### Plot Variable for Problems 1 and 2
+```{r}
+library(ggplot2)
+
+prob.1.2 <- ggplot(data = twinData, mapping = aes(x=ht1, y=ht2))+
+  geom_point(na.rm = TRUE)
+```
+
+#### Problem 1
+```{r}
+prob.1.2 +
+  geom_smooth(method = lm, formula = y~x, se=FALSE)
+```
+
+We can see that the twins are similar in height due to the fact that the data points have a strong positive linear correlation and exist along the general linear fit. This means with a value for the height of one twin, we can use the linear fitted line to estimate the height of the other twin quite well. 
+
+#### Problem 2
+```{r}
+prob.1.2 + 
+  facet_grid(vars(cohort), vars(zygosity)) +
+  geom_smooth(method = lm, formula = y~x, se = FALSE)
+```
+
+#### Problem 3
+After using the "cohort" and "zygosity" features to facet, we observe that there still exists a positive linear correlation between the twin heights. However, the distribution of points varies based on the cohort and zygosity pair. Those with zygosity MZFF and MZMM have twin heights that correspond to more compact data points and result in smaller residuals around the linear fit. Those with other zygosities still have positive correlation, but the point distribution is wider and less orderly around the linear fit.
+
+### Tibble based on correlation test for Problems 4 and 5
+```{r}
+library(broom)
+
+prob.4 <- twinData %>% 
+  group_by(cohort,zygosity) %>%  
+  do(tidy(cor.test(~ ht1 + ht2, alternative = "greater", data = . ))) 
+```
+
+#### Problem 4
+```{r}
+sortDesc <- prob.4 %>%
+  arrange(desc(estimate))
+sortDesc
+```
+
+#### Problem 5
+```{r}
+#1 corresponds to above 0.5, 0 corresponds to below 0.5
+confAbove = ifelse(sortDesc$conf.low > 0.5, 1, 0)
+sig_twin_cor <- cbind(sortDesc, confAbove = confAbove)
+sig_twin_cor
+```
+
+#### Problem 6
+
+```{r}
+sig_sim_cor <- sig_twin_cor %>%
+  filter(confAbove == 1)
+sig_sim_cor 
+```
+
+#### Problem 7
+
+```{r}
+twinData <- twinData %>%
+  mutate(significance = ifelse(zygosity == "MZMM" | zygosity == "MZFF", "significant", "non-significant"))
+
+ggplot(data = twinData, mapping = aes(x=ht1, y=ht2, color = significance))+
+  facet_grid(vars(cohort), vars(zygosity))+
+  geom_point(na.rm = TRUE)
+```
+
+As was seen from problem 6, the data points with zygosity of MZMM or MZFF had lower 95% confidence intervals above 0.5. These are the exact same ones mentioned in problem 2 as being more compact and having smaller residuals around the linear fit. Therefore, twins with zygosity MZFF or MZMM have heights that are significantly similar.
+
+### Tidy data for problems 8 + 9
+```{r}
+prob.8.9 <- twinData %>%
+  gather(key = "order", value = "height", ht1:ht2)
+```
+
+#### Problem 8
+```{r}
+ggplot(data = prob.8.9, mapping=aes(x=order,y=height))+
+  facet_grid(vars(cohort), vars(zygosity))+
+  geom_boxplot()
+```
+
+#### Problem 9
+```{r}
+twin_t <- 
+  twinData %>% 
+  select(cohort,zygosity,ht1,ht2) %>% 
+  group_by(cohort,zygosity) %>%
+  do(tidy(t.test(.$ht1, .$ht2, paired = TRUE)))
+twin_t
+```
+
+```{r}
+sig_ptestResult <- twin_t %>%
+  arrange(desc(p.value)) %>%
+  filter(p.value <= 0.05)
+
+sig_ptestResult
+```
+
+```{r}
+prob.8.9 <- prob.8.9 %>%
+  mutate(significance = ifelse(zygosity == "DZOS", "significant", "non-significant"))
+
+ggplot(prob.8.9, mapping=aes(order,height,color=significance))+
+  facet_grid(vars(cohort), vars(zygosity))+
+  geom_boxplot() + 
+  labs(subtitle = "Significance at α = 0.05")
+```
+

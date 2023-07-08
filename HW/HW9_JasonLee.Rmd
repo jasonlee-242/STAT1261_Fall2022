@@ -1,0 +1,183 @@
+---
+title: "STAT 1261/2260 Homework 9"
+author: "Jason Lee"
+date: "2022-12-2"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Libraries
+```{r message = FALSE}
+library(NHANES)
+library(tidyverse)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(ROCR)
+library(e1071)
+library(caret)
+```
+
+Data loaded + subsetted; Decision Tree and Random Forest models evaluated
+```{r, echo = FALSE}
+data2<- NHANES %>%
+  select(Gender,Age,Race1,Education,MaritalStatus,HHIncomeMid,Poverty,HomeOwn,Weight,Height,
+         BMI,Pulse,BPSysAve,BPDiaAve,Diabetes,HealthGen,DaysPhysHlthBad,DaysMentHlthBad,
+         Depressed,SleepHrsNight,SleepTrouble,AlcoholDay,Smoke100,Marijuana,HardDrugs) %>% 
+  drop_na()
+
+set.seed(100)
+train2 <- data2 %>% sample_frac(size = 0.8, fac=HardDrugs)
+test2 <- data2 %>% setdiff(train2)
+```
+
+```{r, echo = FALSE}
+form_full<- as.formula(HardDrugs~Gender+Age+Race1+Education+MaritalStatus+HHIncomeMid+Poverty+HomeOwn+Weight+Height+BMI+Pulse+BPSysAve+BPDiaAve+Diabetes+HealthGen+DaysPhysHlthBad+DaysMentHlthBad+Depressed+SleepHrsNight+SleepTrouble+AlcoholDay+Smoke100+Marijuana)
+
+mod_tree <- rpart(form_full,data=train2)
+
+mod_rf<- randomForest(form_full,train2,ntree=1000)
+mod_rf
+```
+
+```{r}
+#functions
+confusion_matrix <- function(data,y,mod){
+  confusion_matrix <- data %>% 
+  mutate(pred = predict(mod, newdata = data, type = "class"),
+         y=y) %>%
+  select(y,pred) %>% table()
+}
+
+misclass <- function(confusion){
+  misclass <- 1- sum(diag(confusion))/sum(confusion)
+  return(misclass)
+}
+```
+
+### Problem 1
+```{r}
+#Calculate the misclassification rate of the random forest model.
+rf_ConfMat <- confusion_matrix(test2, test2$HardDrugs, mod_rf)
+misRateTest <- misclass(rf_ConfMat)
+misRateFull <- misclass(confusion_matrix(data2, data2$HardDrugs, mod_rf))
+
+#Using the misclassification rate of only the test set is better as the model
+#shows how well it can classify data it hasn't seen before
+paste("Misclassification Rate of Test Set: ", round(misRateTest,4))
+paste("Misclassification Rate of Entire Set: ", round(misRateFull,4))
+```
+
+### Problem 2
+```{r}
+#Fit Naive Bayes + calculate Misclassification Rate
+bayes_Model <- naiveBayes(HardDrugs~., data=train2)
+#result_bayes <- predict(bayes_Model, newdata = test2)
+bayesRes <- confusion_matrix(test2, test2$HardDrugs, bayes_Model)
+bayesMisclass <- misclass(bayesRes)
+paste("Naive Bayes Model Misclassification Rate of the test dataset: ", round(bayesMisclass,4))
+
+```
+
+#Function to calculate Sensitivity and Specificity
+```{r}
+#Sensitivity: True Positive ("Yes")
+#Specificity: True Negative ("No")
+sensitivity_Specitivity <- function(confMatrix){
+  sensitivity <- confMatrix[2,2] / sum(confMatrix[2,])
+  specificity <- confMatrix[1,1] / sum(confMatrix[1,])
+  return (c(sensitivity, specificity))
+}
+```
+
+### Problem 3
+```{r}
+#Calculate Sensitivity and Specificity for random Forest and Naive Bayes
+rfSS <- sensitivity_Specitivity(rf_ConfMat)
+paste("Random Forest Sensitivity: ", round(rfSS[1], 4))
+paste("Random Forest Specificity: ", round(rfSS[2], 4))
+
+nbSS <- sensitivity_Specitivity(bayesRes)
+paste("Naive Bayes Sensitivity: ", round(nbSS[1], 4))
+paste("Random Forest Specificity: ", round(nbSS[2], 4))
+
+```
+
+```{r echo = FALSE}
+roc_data <- function(test,y_test,model,type){
+  prob = model %>% 
+    predict(newdata=test, type=type) %>% 
+    as.data.frame()
+  pred_prob = prediction(prob[,2], y_test)
+  perf = performance(pred_prob, 'tpr', 'fpr')
+  perf_df = data.frame(perf@x.values, perf@y.values)
+  names(perf_df)=c('fpr','tpr')
+  return(perf_df)
+}
+
+point_data <- function(test,y_test,model,type){
+  y_pred = predict(model, newdata=test,type=type)
+  confusion_matrix = table(y_test, y_pred)
+  tpr = confusion_matrix['Yes','Yes']/sum(confusion_matrix['Yes',])
+  fpr = confusion_matrix['No','Yes']/sum(confusion_matrix['No',])
+  return(c(fpr,tpr))
+}
+```
+
+### Problem 4
+```{r}
+#ROC Curves for Naive Bayes, Decision Tree, Random Forest
+perf_df_rf = roc_data(test2, test2$HardDrugs, mod_rf, "prob")
+point_rf = point_data(test2, test2$HardDrugs, mod_rf, "class")
+
+perf_df_nb = roc_data(test2, test2$HardDrugs, bayes_Model, "raw")
+point_nb = point_data(test2, test2$HardDrugs, bayes_Model, "class")
+
+perf_df_dt = roc_data(test2, test2$HardDrugs, mod_tree, "prob")
+point_dt = point_data(test2, test2$HardDrugs, mod_tree, "class")
+
+ggplot(data =perf_df_rf, aes(x=fpr, y=tpr))+
+  geom_line(color="purple",lwd=1)+
+  geom_line(data=perf_df_nb, color = "blue") +
+  geom_line(data=perf_df_dt, color = "orange") + 
+  geom_point(x=point_rf[1],y=point_rf[2],size=3,col="red") +
+  geom_point(x=point_nb[1],y=point_nb[2],size=3,col="blue") +
+  geom_point(x=point_dt[1],y=point_dt[2],size=3,col="orange") +
+  labs(x='False Positive Rate', y='True Positive Rate')
+```
+
+### Problem 5
+```{r}
+trControl <- trainControl(method="repeatedcv", number=5, repeats=2)
+mtry <- seq(2,20,2)
+tunegrid <- expand.grid(.mtry = mtry)
+fit <- train(HardDrugs~.,
+             data = train2,
+             method = "rf",
+             tuneGrid = tunegrid,
+             trControl=trControl,
+             metric = "Accuracy")
+
+fit
+print("mtry = 8 has greatest accuracy.")
+```
+
+```{r}
+mod_rf2 <- randomForest(form_full,train2,ntree=1000,mtry = 8)
+rf2_ConfMat <- confusion_matrix(test2, test2$HardDrugs,mod_rf2)
+rf2_misClassRate <- misclass(rf2_ConfMat)
+paste("Misclassification Rate for RF Model with mtry 8: ", round(rf2_misClassRate,4))
+
+```
+
+### Problem 6
+```{r}
+mod_rf3 <- randomForest(form_full,train2,ntree=1000,mtry = 6)
+rf3_ConfMat <- confusion_matrix(test2, test2$HardDrugs,mod_rf3)
+rf3_misClassRate <- misclass(rf3_ConfMat)
+paste("Misclassification Rate for RF Model with mtry 6: ", round(rf3_misClassRate,4))
+```
+
+We see that the RF model with the lower mtry of 6 performs better with a lower misclassification rate. A possible reason for this is because the increasing mtry values begin causing overfitting of the trained models, causing the model's ability to predict test/unseen data to decrease. 

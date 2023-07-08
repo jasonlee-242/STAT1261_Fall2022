@@ -1,0 +1,149 @@
+---
+title: "STAT 1261/2260 Homework 8"
+author: "Jason Lee"
+date: "2022-11-11"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data Prep
+```{r}
+#install.packages(c("NHANES", "tidyverse", "glmnet"))
+library(NHANES)
+library(tidyverse)
+library(glmnet)
+library(rpart)
+library(rpart.plot)
+
+?NHANES
+```
+
+```{r}
+data1<- NHANES %>%
+  select(HardDrugs,Gender,HealthGen,Depressed,SleepHrsNight,AlcoholDay,SmokeNow,Marijuana) %>% 
+  na.omit()
+glimpse(data1)
+```
+
+#### Problem 1
+```{r}
+contTable <- with(data1, table(Marijuana, HardDrugs))
+propcontTable <- contTable / sum(contTable)
+round(propcontTable,3)
+```
+
+## Regularized Logistic Regression 1
+```{r}
+set.seed(99)
+train1 <- data1 %>% sample_frac(size = 0.8)
+test1 <- data1 %>% setdiff(train1)
+```
+```{r}
+library(glmnet)
+form<- as.formula(
+  "HardDrugs ~Gender+HealthGen+Depressed+SleepHrsNight+AlcoholDay+SmokeNow+Marijuana")
+predictors <- model.matrix(form, data = train1) 
+cv.fit <- cv.glmnet(predictors, train1$HardDrugs, family = "binomial", type = "class")
+cv.fit$lambda.1se
+
+plot(cv.fit)
+```
+```{r}
+lambda_opt=cv.fit$lambda.1se
+mod_lr <- glmnet(predictors, train1$HardDrugs, family = "binomial", lambda = lambda_opt)
+
+form2 <- as.formula(HardDrugs~Gender+Depressed+AlcoholDay+Marijuana)
+mod_lr2 <- glm(form2, data=train1,family=binomial)
+summary(mod_lr2)
+```
+#### Problem 2
+"MarijuanaYes" or Marijuana is the most significant as it has a near zero p-value (2e-16 ~ 0).
+
+#### Problem 3
+There is a strong, positive correlation between Marijuana and HardDrugs as seen by the estimated 3.11 coefficient of Marijuana (HardDrugs = 3.11 * Marijuana + error).
+
+#### Problem 4
+Males are more likely to use HardDrugs seen by the moderate, positive estimated coefficient for "GenderMale".
+
+## Decision Tree
+```{r}
+mod_tree <- rpart(form2,data=train1)
+rpart.plot(mod_tree)
+```
+
+#### Problem 5
+Marijuana usage ("Marijuana = No") is the most important predictor as the root of the decision tree. It has the greatest impact on predicting response. 
+
+#### Problem 6
+Those who have tried Marijuana (**Not** Marijuana = No) and are Depressed (**Not** Depressed = None) are most likely to use hard drugs.
+
+## Data Prep
+```{r}
+data2<- NHANES %>%
+  select(Gender,Age,Race1,Education,MaritalStatus,HHIncomeMid,Poverty,HomeOwn,Weight,Height,
+         BMI,Pulse,BPSysAve,BPDiaAve,Diabetes,HealthGen,DaysPhysHlthBad,DaysMentHlthBad,
+         Depressed,SleepHrsNight,SleepTrouble,AlcoholDay,Smoke100,Marijuana,HardDrugs) %>% 
+  drop_na()
+
+train2 <- data2 %>% sample_frac(size = 0.8, fac=HardDrugs)
+test2 <- data2 %>% setdiff(train2)
+```
+
+## Regularized Logistic Regression 2
+```{r}
+library(glmnet)
+form_full<- as.formula(HardDrugs~Gender+Age+Race1+Education+MaritalStatus+HHIncomeMid+Poverty+HomeOwn+Weight+Height+BMI+Pulse+BPSysAve+BPDiaAve+Diabetes+HealthGen+DaysPhysHlthBad+DaysMentHlthBad+Depressed+SleepHrsNight+SleepTrouble+AlcoholDay+Smoke100+Marijuana)
+predictors <- model.matrix(form_full, data = train2) 
+cv.fit <- cv.glmnet(predictors, train2$HardDrugs, family = "binomial", type = "class")
+cv.fit$lambda.1se
+
+plot(cv.fit)
+```
+```{r}
+lambda_opt=cv.fit$lambda.1se
+mod_lr2 <- glmnet(predictors, train2$HardDrugs, family = "binomial", lambda = lambda_opt)
+mod_lr2$beta
+```
+
+#### Problem 7
+```{r}
+mod_tree2 <- rpart(form_full, data = data2)
+rpart.plot(mod_tree2)
+```
+
+*The Decision Tree identified 14 important predictors.*
+
+## Model Assessment
+```{r echo = FALSE}
+confusion_matrix <- function(data,y,mod){
+  confusion_matrix <- data %>% 
+  mutate(pred = predict(mod, newdata = data, type = "class"),
+         y=y) %>%
+  select(y,pred) %>% table()
+}
+misclass <- function(confusion){
+  misclass <- 1- sum(diag(confusion))/sum(confusion)
+  return(misclass)
+}
+
+logistic.misclassrate <- function(dataset, y, fit, form){
+  misclass_lr <- dataset %>% 
+  mutate(pred.logistic = predict(fit, newx = model.matrix(form, data = dataset), 
+         type = "class")) %>% 
+  mutate(misclassify = ifelse(y != pred.logistic, 1,0)) %>%
+  summarize(misclass.rate = mean(misclassify))
+  return(misclass_lr$misclass.rate)
+}
+```
+
+#### Problem 8
+```{r}
+tree_Confusion_Matrix <- confusion_matrix(data2, data2$HardDrugs, mod_tree2)
+tree_accuracy <- misclass(tree_Confusion_Matrix)
+tree_Confusion_Matrix
+
+paste("Misclassification Error Rate: ", tree_accuracy)
+```
+

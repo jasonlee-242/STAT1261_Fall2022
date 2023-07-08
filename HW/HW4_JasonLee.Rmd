@@ -1,0 +1,51 @@
+---
+title: 'STAT1261/2260 HW4'
+author: 'Jason Lee'
+date: '10-4-2022'
+output: word_document
+---
+```{r include=FALSE}
+knitr::opts_chunk$set(message = FALSE)
+```
+##Load the necessary Libraries
+```{r}
+library(tidyverse)
+library(Hmisc)
+library(mdsr)
+library(babynames)
+
+BabynamesDist <- make_babynames_dist()
+paste("Libraries Loaded!")
+```
+
+## P1: Median Ages for 25 Most Common Female Names
+```{r}
+com_fem <- BabynamesDist %>% #com_fem stands for "common female"
+filter(sex == "F") %>%
+group_by(name) %>%
+filter(est_alive_today>0) %>%
+summarise(
+est_num_alive = sum(est_alive_today),
+q1_age = wtd.quantile(age_today, est_alive_today, probs = 0.25),
+median_age = wtd.quantile(age_today, est_alive_today, probs = 0.5),
+q3_age = wtd.quantile(age_today, est_alive_today, probs = 0.75)
+) %>%
+arrange(desc(est_num_alive)) %>%
+head(25)
+com_fem
+```
+#### Q1
+For all living Margarets, the 25th percentile of age is **49**, the median age is **64**, and the 75th percentile age is **75** according to the graphic. These statistics are outdated though as margaret is no longer among the 25 most common female names in the dataset.
+
+#### Q2
+The name "Elizabeth" has the largest IQR (75th% - 25th%).
+
+#### Q3
+They are ordered in ascending order of median age of females with the 25 most common names.
+
+#### Q4
+1) Length: The length of the bars for each name represent the amount of distribution of ages for that particular name.
+2) Position: The location of each bar relative to the others suggests similarity or difference in age between names.
+3) Direction: Ordering median age in descending order creates a low age -> high age trend in the graph.
+4) Color: Using a red dot to represent the median on top of a lighter yellow color for the bar makes it easy to identify the location.
+

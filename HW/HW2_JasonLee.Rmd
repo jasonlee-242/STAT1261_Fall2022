@@ -1,0 +1,112 @@
+---
+title: "STAT 1261/2260 Homework 2"
+author: "Jason Lee"
+date: "2022-09-19"
+output: word_document
+---
+```{r include=FALSE}
+knitr::opts_chunk$set(message = FALSE)
+```
+
+## Five of my Favorite Movies
+- **Interstellar**
+- Mission Impossible: Fallout
+- Inception
+- Gladiator
+- Parasite
+
+## My Image
+![The Wondrous Imagination of Calvin and Hobbes](CalvinandHobbes.jpeg)
+
+
+## Name, Age, Salary Table
+
+|Name|Age|Salary|
+|:---|---:|----:|
+|Sam|22|$55,000|
+|Tom|25|$60,000|
+|Susan|30|$80,000|
+
+## Appendix D Problems
+### QD3
+After rendering, the code in *all of the chunks* will be displayed, and *one output*
+
+Assignment Chunks(No output):
+```{r}
+x <- 1:5
+```
+```{r}
+x <- x+1
+```
+Call to the variable x:
+```{r}
+x
+```
+Output:
+**2 3 4 5 6**
+
+### QD4
+After rendering, there will be *no chunks* displayed and *no output*. 
+```{r echo = FALSE}
+x <- 1:5
+```
+```{r echo = FALSE}
+x <- x + 1
+```
+```{r include = FALSE}
+x
+```
+
+### QD5
+After rendering, there will be *no code chunks* displayed, but there will be *one output*
+```{r echo = FALSE}
+x <- 1:5
+```
+```{r echo = FALSE}
+x <- x + 1
+```
+Call to variable x:
+```{r echo = FALSE}
+x
+```
+Output:
+**2 3 4 5 6**
+
+### QD6
+After rendering, there will be *no code chunks* displayed, but there will be *one output*
+```{r echo = FALSE}
+x <- 1:5
+```
+```{r echo = FALSE, eval = FALSE}
+x <- x + 1
+```
+```{r echo = FALSE}
+x
+```
+Output:
+**1 2 3 4 5**
+
+### QD9
+If warning is set to FALSE, the code will *not display any warnings* during knitr rendering. For a calculation such as sqrt(-1), the result is a NaN, so an error isn't thrown. The NaN can therefore unknowingly be added to a data.frame, matrix, or vector data structure and impact future calculations without your knowledge. Debugging will take time to find where the issue is. Therefore a warning is beneficial.
+
+### QD12
+```{r chunk1, eval = TRUE, include = FALSE}
+x <- 15
+cat("assigning value to x.\n")
+```
+First Output: *no output and no code* displayed 
+```{r chunk2, eval = TRUE, include = FALSE}
+x <- x + 3
+cat("updating value of x.\n")
+```
+Second Output: *no output and no code* displayed
+```{r chunk3, eval = FALSE, include = TRUE}
+cat("x =", x, "\n")
+```
+Third Output: *no output* but code of 'chunk3' displayed
+```{r chunk1, eval = FALSE, include = TRUE}
+```
+Fourth Output: *no output* but code of 'chunk1' displayed
+```{r chunk2, eval = FALSE, include = TRUE}
+```
+Fifth Output: *no output* but code of 'chunk2' displayed

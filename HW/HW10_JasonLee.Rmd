@@ -1,0 +1,108 @@
+---
+title: "STAT 1261/2260 Homework 10"
+author: "Jason Lee"
+date: "2022-12-9"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#### Load Libraries
+```{r message = FALSE}
+library(factoextra)
+library(tidyverse)
+library(cluster)
+library(ggplot2)
+
+country = read_csv("Country-data.csv", show_col_types = FALSE)
+```
+
+```{r}
+country_pc = country %>% 
+  select(-country) %>% 
+  prcomp(scale=TRUE)
+```
+
+### Problem 1
+```{r}
+#Variance is SD squared
+country_var <- country_pc$sdev^2
+pc_var <- country_var / sum(country_var)
+pc_var
+```
+
+### Problem 2
+```{r}
+principal_comp <- 1:9
+pc_df <- data.frame(principal_comp, pc_var)
+
+pc_df %>% 
+  ggplot(aes(x=principal_comp,y=pc_var)) +
+  geom_line(color = "black") +
+  geom_point(color = "blue", cex = 2) +
+  geom_point(aes(x = 2, y = pc_var[2]), color = "orange", cex = 6, alpha = 0.1) +
+  scale_x_continuous(breaks = 1:9)
+  
+```
+
+I believe PC2 is the elbow of the screeplot. The change in principal component variance from 1 to 2 is the sharpest (closest to 90 degrees). The variance explained by the components after PC1 is seen to level out quickly, especially after PC5. PC1 should be enough to explain most of the data. However, with PC2 having ~17.5% of the explained variance, it wouldn't be out of the question to evaluate PC2 should one decide to.
+
+### Problem 3
+```{r}
+pc_var_Cum <- cumsum(pc_var)
+pc_df$cumulative = pc_var_Cum
+pc_df %>%
+  ggplot(aes(x=principal_comp,y=pc_var_Cum)) +
+  geom_line(color = "black") +
+  geom_point(color = "red", cex = 2) +
+  geom_hline(aes(yintercept=0.9), lty=2, color = "purple")+
+  scale_x_continuous(breaks = 1:9)
+```
+
+### Problem 4
+```{r}
+country_s = scale(country[,-1])
+p4_pc <- country_pc$x[,1:4]
+fviz_nbclust(p4_pc, kmeans, "gap_stat")
+```
+
+### Problem 5
+```{r}
+set.seed(42)
+#since both algorithms select the centers randomly at first, seed is set to ensure consistency
+km_mod = kmeans(country_s, centers=3)
+pam_mod = pam(country_s, 3)
+
+mod_diff <- sum(km_mod$cluster != pam_mod$clustering)
+paste("Number of different clustered observations between K-means and PAM: ", mod_diff)
+```
+
+### Problem 6
+```{r}
+country_pam = country %>% mutate(cluster=factor(pam_mod$cluster))
+
+boxplot(gdpp~cluster,data=country_pam,horizontal=T)
+```
+
+### Problem 7
+```{r}
+c1_life <- country_pam[country_pam$cluster == 1, ]$life_expec
+c2_life <- country_pam[country_pam$cluster == 2, ]$life_expec
+c3_life <- country_pam[country_pam$cluster == 3, ]$life_expec
+#could also use quantile(cX_life, 0.5)
+paste("Cluster 1 Median life expectancy: ", median(c1_life))
+paste("Cluster 2 Median life expectancy: ", median(c2_life))
+paste("Cluster 3 Median life expectancy: ", median(c3_life))
+```
+
+### Problem 8
+```{r fig.height=28}
+library(ape)
+country_dend = country_s %>% dist(method="euclidean") %>% 
+  hclust(method="ward.D2")
+
+plot(as.phylo(country_dend), type = "cladogram", cex = 0.5, 
+     label.offset = 0.5)
+```
+

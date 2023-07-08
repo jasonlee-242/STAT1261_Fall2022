@@ -1,0 +1,111 @@
+---
+title: 'STAT1261 Homework 5'
+author: "Jason Lee"
+subtitle: 'STAT 1261/2260: Principles of Data Science'
+output:
+  word_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE, fig.width=6, fig.height=4, out.width = "70%", fig.align = "center") 
+```
+
+Import important libraries
+```{r}
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+```
+
+ 
+#### Homework
+
+1. A common type of messy dataset is tabular data designed for presentation, where variables form both the rows and columns, and column headers are values, not variable names. The data contained in `pew.csv` explores the relationship between income and religion in the US. It comes from a report produced by the Pew Research Center, an American think-tank that collects data on attitudes to topics ranging from religion to the internet, and produces many reports that contain datasets in this format. This dataset should have three variables: `religion`, `income` and `frequency`. Use `gather()` to make this data tidy. 
+[ Hint: Use the following line to read the data. ]
+
+```{r}
+pew <- read.csv("pew.csv", stringsAsFactors = FALSE,
+                       check.names = FALSE)
+
+pew_tidy <- gather(pew, key="income",value="frequency",2:11)
+paste("Size of pew_tidy: ", dim(pew_tidy)[1],'x',dim(pew_tidy)[2])
+head(pew_tidy, 25)
+```
+
+```{r,message=FALSE,include = FALSE}
+library(tidyverse)
+table1
+table2
+table3
+table4a
+table4b
+table5
+```
+
+2. Make `table4b` tidy, by gathering the latter two columns, where key is "year", value is "population". Set the name of the resulting data frame `tidy4b`. 
+
+```{r}
+tidy4b <- gather(table4b,key = "year", value = "population", 2:3)
+tidy4b
+```
+3. Join the two tidy tables `tidy4a` and `tidy4b`, using a two-table verb in `dplyr`. The resulting data frame must look exactly the same as `table1`. 
+
+*tidy4b from question2*
+```{r}
+tidy4a <- gather(table4a, key = "year",value = "cases",2:3)
+tidy4a
+```
+
+*join tidy4b and tidy4a*
+```{r}
+join_tidy_4ab <- inner_join(tidy4a, tidy4b)
+join_tidy_4ab %>%
+  arrange(country)
+```
+
+4. Consider the following data frame. Spread it to a wide table so that return in each year is a column and each value of `half` is a row.
+
+``` {r}
+stocks <- tibble(
+  year   = c(2015, 2015, 2016, 2016),
+  half  = c(   1,    2,     1,    2),
+  return = c(1.88, 0.59, 0.92, 0.17)
+)
+
+stocks %>%
+  spread(key="year",value = "return")
+```
+
+5. Tidy the simple tibble below. Do you need to spread or gather it? What are the variables?
+
+There are essentially 3 variables: *Sex(M/F), Pregnant(Y/N), and Count*.
+
+To tidy the data we could **gather()** it: 
+
+**NOTE:** The pregnant males are *explicitly* left in to represent none. You could remove the row or change it to 0 if desired.
+
+```{r}
+pregnant <- tribble(
+  ~pregnant, ~male, ~female,
+  "yes",     NA,    10,
+  "no",      20,    12
+)
+pregnant %>%
+  gather(key="sex",value="count",2:3)
+```
+
+
+Table 5 has two separate variables `century` and `year`, which may be combined into one variable. We can use `unite()` for this. 
+
+```{r}
+table5 %>% 
+  unite(new, century, year, sep = "")
+```
+6. In the intermediate result above, notice that the new variable `new` has a not very meaningful name, and its values are not numbers but characters. Finish transforming `table5` into the tidy form (the same as `table1`). 
+
+```{r}
+table5 %>% 
+  unite(year, century, year, sep = "") %>%
+  separate(rate, into=c("cases","population"),sep="/")
+```

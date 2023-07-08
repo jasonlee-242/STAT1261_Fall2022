@@ -1,0 +1,98 @@
+---
+title: "STAT1261_VisualizationProject"
+author: "Jason Lee"
+date: "2022-10-25"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Project Sources
+- **Original Article**: Should Travelers Avoid Flying Airlines That Have Had Crashes in the Past? https://fivethirtyeight.com/features/should-travelers-avoid-flying-airlines-that-have-had-crashes-in-the-past/
+- Link to Package with dataset: https://rudeboybert.github.io/fivethirtyeight/articles/fivethirtyeight.html
+
+## Project Information
+In response to the Malaysia Airlines Flight 17 aviation incident, Nate Silver, the author of the original article, decided to identify if there existed any correlation between crash rates and a selection of major commercial airlines. Analysis was done by comparing crash rates for the airlines across two 15-year time periods (1985-1999 and 2000-2014) based on data from the Aviation Safety Network Database. One of the graphs in his article---*Fatalities by Airline Are Highly Unpredictable*---was used to highlight the correlation between the number of fatalities for the airlines from one period to the next. In this project I attempt to replicate this plot.
+
+## General Project Workflow
+1) Load packages and libraries.
+2) Load dataset.
+3) Observe dataset characteristics.
+4) Perform necessary feature engineering on the dataset.
+5) Plot graph.
+6) Add descriptive features to the graph. Adjust aesthetic elements.
+
+## Graph Recreation + Code Breakdown
+Uncomment to install the needed packages.
+```{r}
+#install.packages(c("fivethirtyeight","ggplot2","dplyr","scales"))
+```
+
+Important Libraries necessary for Graph Recreation are loaded. The "airline_safety" dataset from fivethirtyeight package is loaded and put into a new variable "airsafety" for easier typing. 
+```{r message = FALSE}
+library(fivethirtyeight)
+library(ggplot2)
+library(dplyr)
+library(scales)
+
+data(airline_safety)
+airsafety <- airline_safety
+```
+
+An examination of the airsafety dataset is done to understand the characteristics of the unmodified dataset. Dataset dimensions **(dim())**, number of NA values **(sum(is.na()))**, and the column names **(colnames())** were observed.  
+```{r}
+paste("Size of data: ", dim(airsafety)[1], "x", dim(airsafety)[2])
+paste("Number of null values: ", sum(is.na(airsafety)))
+colnames(airsafety)
+```
+
+A **head()** of airsafety helps with further understanding the type of data contained in each column. 
+```{r}
+head(airsafety, 5)
+```
+
+According to the article, fatal crash rates were based on *"the number of available seat kilometers (ASKs) ... the number of seats multiplied by the number of kilometers the airline flies"*. Our graph of interest specifically looks at Fatalities and ASKs of airlines. Therefore columns "fatalities_00_14", "fatalities_85_99", "airline", and "avail_seat_km_per_week" are identified as the columns of interest. Per the subtitle in the graph, we should adjust fatalities by ASK for 1 trillion kilometers. The following equation is used: **fatalities * 1e12 / (avail_seat_km_per_week * 52 * 15)**. The "avail_seat_km_per_week" is multiplied by 52 (weeks) and 15 (years) to change the values from ASKs weekly to the amount of ASKs over the 15 year periods. Dividing "fatalities_00_14" and "fatalities_85_99" by ASKs over 15 years and multiplying by 1 trillion gives the adjusted fatalities per trillion kilometers over the 15 year periods. The **mutate()** function is used to add these adjusted data columns to the airsafety dataset as new columns "adjust_85_99" and "adjust_00_14".
+```{r}
+trillion_seat_km <- (1*10^12) / (airsafety$avail_seat_km_per_week * 52 * 15)
+airsafety <- mutate(airsafety, adjust_85_99=airsafety$fatalities_85_99 * trillion_seat_km)
+airsafety <- mutate(airsafety, adjust_00_14=airsafety$fatalities_00_14 * trillion_seat_km)
+```
+
+To match the labeling format in the original plot, a new line ("\\n") replaces " " (spaces) in airline names with more than 1 word using the base R function **sub()**. For airline "Avianca", the only one word airline shown in the original plot, a newline is manually added to the end using indexing. These modified airline names are added to airsafety as a new column "air_label" using **mutate()**.
+```{r}
+airsafety <- mutate(airsafety, air_label=sub(" ", "\n", airsafety$airline))
+airsafety[airsafety$air_label=="Avianca","air_label"] <- "Avianca\n"
+```
+
+A base plot is made using **ggplot()**. The newly generated *adjusted_85_99* (x-axis) and *adjusted_00_14* (y-axis) columns are plotted using **geom_point()** and adjusted for shape, size, and opacity to match the original graph. **geom_label()** adds airline labels from the new "air_label" column to the right of a select few points based on their position using **filter()**. **geom_smooth()** creates a red correlation line with no confidence intervals by fitting a linear model with the general formula y~x (adjust_00_14~adjust_85_99). **scale_x_continuous()** and **scale_y_continuous()** both take the exact same arguments that set the axis limits (0 to 1500), tick mark intervals (every 250), and axis label format (use commas -> X,XXX). Finally, **geom_vline()** and **geom_hline()** plot lines at x = 0 and y = 0 to thicken the appearance of the axis lines.
+```{r}
+bare_Plot <- ggplot(data=airsafety, mapping = aes(adjust_85_99,adjust_00_14)) + 
+  geom_point(alpha=0.6, size = 3, shape = 16) + 
+  geom_label(data = filter(airsafety, adjust_85_99 > 750 | adjust_00_14 > 650), 
+             mapping = aes(label=air_label), hjust="left", nudge_x = 25, label.size = NA, fill=NA) +
+  geom_smooth(method ="lm",formula=y~x,col="red",se = FALSE) +
+  scale_x_continuous(labels=comma,breaks = seq(0,1500,250),limits = c(0,1500),minor_breaks = NULL) +
+  scale_y_continuous(labels=comma,breaks = seq(0,1500,250),limits = c(0,1500),minor_breaks = NULL) +
+  geom_vline(xintercept = 0, lwd = 0.35) + geom_hline(yintercept = 0, lwd = 0.35)
+```
+
+Aesthetics and important label features are added to the base plot above. The title, subtitle, and axis labels are added using **labs()**. Aesthetics including font size, font type, plot background color, grid line color, and axes tick color are adjusted with **theme()** to match the original plot as closely as possible. An online Hex/HTML color code site was used to generate the colors (https://htmlcolorcodes.com). Finally, the plot size and position is set using R code chunk options.
+
+```{r figFinal, fig.height = 10, fig.width=8, fig.align='center'}
+  bare_Plot + 
+  labs(title = "Fatalities by Airline Are Highly Unpredictable", 
+       subtitle = "Fatalities adjusted for seats available and distance traveled\n(deaths per 1 trillion seat kilometers)", 
+       x = "1985-99", y = "2000-14") + 
+  theme(plot.title = element_text(size=20,face="bold"), #change title font size + type(bold)
+        plot.subtitle = element_text(size = 14), #change subtitle size
+        plot.background = element_rect(fill="#f0f2f5"), #change plot background color
+        panel.background = element_rect(fill="#f0f2f5"), #change color of the entire panel frame
+        panel.grid.major = element_line(color="#DADBDC"), #change grid line color
+        axis.ticks = element_line(color="#DADBDC"), #change axes tick color
+        axis.text = element_text(size = 11), #change axes label size
+        axis.title = element_text(size=15,face="bold")) #change axes title size
+```
+
+#### Conclusion
+As seen in my replicated plot as well as the original in Nate Silver's article, there exists no correlation in rate of fatalities from one period to the next for these airlines.

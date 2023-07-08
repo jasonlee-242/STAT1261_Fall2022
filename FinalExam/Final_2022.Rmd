@@ -1,0 +1,556 @@
+---
+title: "Final Exam"
+subtitle: 'STAT 1261/2260: Principles of Data Science'
+author: "Jason Lee"
+output: 
+    html_document
+    #word_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE, out.width="60%")
+```
+
+### <span style="color:red"> Instructions </span>
+- Total points: 200
+- Due at 11:59 PM on Wednesday, December 14, 2022
+- Using the markdown file I provided is the best option. Insert your solution after each part of each question.
+- Submit the knitted file only. It could be an HTML or word file. 
+- Read the instruction for each part carefully.
+- Run all the code provided in the markdown file to make sure that your data is wrangled correctly.
+- Use the same seed as I used, which is 99. Note that I set seed in each chunk where a random process is involved. 
+
+
+### <span style="color:steelblue">Part I: U.S. Salary (100 points) </span>
+
+```{r,message=FALSE,warning=FALSE}
+library(tidyverse)
+library(cluster)
+library(ggplot2)
+```
+
+#### <span style="color:orchid"> Introduction to the Data Set </span>
+The data set used in this part is extracted from the 1994 Census database. 
+
+##### Features (predictors):
+
+- `age`: continuous numeric
+- `workclass`: Private, Self-emp-not-inc, Self-emp-inc, Federal-gov, Local-gov, State-gov, Without-pay, Never-worked.
+- `fnlwgt`: continuous numeric
+- `education`: Bachelors, Some-college, 11th, HS-grad, Prof-school, Assoc-acdm, Assoc-voc, 9th, 7th-8th, 12th, Masters, 1st-4th, 10th, Doctorate, 5th-6th, Preschool
+- `education-num`: continuous numeric
+- `marital-status`: Married-civ-spouse, Divorced, Never-married, Separated, Widowed, Married-spouse-absent, Married-AF-spouse
+- `occupation`: Tech-support, Craft-repair, Other-service, Sales, Exec-managerial, Prof-specialty, Handlers-cleaners, Machine-op-inspct, Adm-clerical, Farming-fishing, Transport-moving, Priv-house-serv, Protective-serv, Armed-Forces
+- `relationship`: Wife, Own-child, Husband, Not-in-family, Other-relative, Unmarried
+- `race`: White, Asian-Pac-Islander, Amer-Indian-Eskimo, Other, Black
+- `sex`: Female, Male
+- `capital-gain`: continuous numeric
+- `capital-loss`: continuous numeric
+- `hours-per-week`: continuous numeric
+- `native-country`
+
+##### Target (response):
+
+- `salary`: <=50K or >50K
+
+##### Prediction task: Determine whether a person makes over 50K a year.
+
+#### <span style="color:orchid"> Data Wrangling </span>
+First, let us load the data set and fileter U.S. observations. 
+```{r}
+salary_US0 = read_csv("salary.csv", show_col_types = FALSE)
+salary_US1 <- salary_US0 %>% filter(`native-country`=="United-States")
+glimpse(salary_US1)
+```
+
+Secondly, let us check if there is any missing values. 
+```{r}
+sum(is.na(salary_US1))
+```
+No missing values! Notice that all of the categorical variables have type "character", which is not ideal for machine learning modeling. Let us convert them into factors.
+
+```{r}
+salary_US2 <- as.data.frame(unclass(salary_US1), stringsAsFactors=TRUE)
+```
+
+Use the summary function to have an overview of the variables:
+
+```{r}
+summary(salary_US2)
+```
+
+Notice that since we only kept U.S. observations, `native.country` only has one distinct value, `United-States`, now. It is a constant, so we can remove it. In addition, note that there are two variables about education. The variable `education` is categorical which has a lot of levels. It will consume many degrees of freedom. Thus, let us get rid of `education` and only keep `education-num`.
+
+The variable `fnlwgt` represents final weight, which is assigned by the U.S. census bureau to each row. For simplicity of this analysis, this weighting factor is discarded. 
+
+Notice that `relationship` also has many levels, but the role in a family can be assessed from gender and marital status. Hence, `relationship` is sort of redundant and can be removed.
+
+```{r}
+salary_US3 <- salary_US2 %>% select(-c(native.country,fnlwgt,education,relationship))
+```
+
+**Use `salary_US3` to solve Problems 1 to 6.**
+
+#### <span style="color:orchid"> Exploratory Data Analysis (15 points) </span>
+#### <span style="color:green"> Problem 1. Boxplot (5 points) </span>
+Create a side-by-side boxplot to show the relationship between `salary` and `age`. Hint: Similar to Exercise 6 in HW 10. Don't use `facet_wrap` or `facet_grid`. 
+
+```{r}
+ggplot(data=salary_US3,mapping=aes(x=salary,y=age)) +
+  geom_boxplot()
+```
+
+
+#### <span style="color:green"> Problem 2. Frequency Polygon (5 points) </span>
+Create a density plot to show the relationship between `salary` and `capital.gain`. (Hint: Read Page 20 in lecture slides `ggplot2_3`).
+
+```{r}
+ggplot(data=salary_US3,mapping=aes(x=capital.gain))+
+  geom_freqpoly(mapping=aes(color=salary), binwidth = 6000)
+```
+
+
+#### <span style="color:green"> Problem 3. 2-dimensional Bin-plot(5 points) </span>
+Create a two-dimensional bin-plot to show the relationship between `sex` and `salary`. Hint: Use `geom_bin2d`. Read Page 12 in lecture slides `ggplot2_2`.
+
+```{r}
+ggplot(data=salary_US3,mapping=aes(sex,salary))+
+  geom_bin2d()
+```
+
+
+#### <span style="color:orchid"> Partition Data </span>
+Use the following code to separate `salary_US3` to a training set and a test set. Make sure that you use the same seed.
+
+```{r}
+set.seed(99)
+train_US <- sample_frac(salary_US3, 0.8, fac="salary") # Stratifies sampling
+test_US <- setdiff(salary_US3, train_US)
+```
+
+Data preparation is done for now.
+
+
+#### <span style="color:orchid"> Supervised Learning Modeling (85 points)  </span>
+#### <span style="color:green"> Problem 4. Decision Tree (25 points) </span>
+Load the packages:
+
+```{r}
+library(rpart)
+library(rpart.plot)
+```
+
+Step 1. (5 points) Fit a decision tree with `train_US` using all of the feature variables.  Set the seed as follows:
+
+```{r}
+set.seed(99)
+form_tree <- as.formula(salary~ .)
+mod_tree <- rpart(form_tree, data = train_US)
+```
+
+Step 2. (5 points) Plot the decision tree.
+```{r fig.width=8, fig.height=8}
+rpart.plot(mod_tree)
+```
+
+Step 3. (5 points) Do prediction for the test data using the trained decision.  Calculate the confusion matrix.
+
+```{r}
+confusion_matrix <- test_US %>%
+  mutate(pred = predict(mod_tree, newdata = test_US, type = "class"), y=salary) %>%
+  select(salary, pred) %>% table()
+
+confusion_matrix
+  
+```
+
+Step 4. (5 points) Calculate the misclassification rate.
+
+```{r}
+misRate <- 1 - sum(diag(confusion_matrix))/sum(confusion_matrix)
+paste("Misclassification Rate: ", round(misRate,4))
+```
+
+Step 5. (5 points) Calculate the true positive rate and the true negative rate for the prediction results on the test set, where the two rates are defined as follows:
+
+- True Positive Rate: P(predicted salary<=50K | true salary <=50K)
+- True Negative Rate: P(predicted salary>50K | true salary >50K)
+
+```{r}
+true_pos <- confusion_matrix[1,1] / sum(confusion_matrix[1,])
+paste("True Positive Rate: ", round(true_pos,4))
+true_neg <- confusion_matrix[2,2] / sum(confusion_matrix[2,])
+paste("True Negative Rate: ", round(true_neg,4))
+```
+
+#### <span style="color:green"> Problem 5. Random Forest (30 points) </span>
+Load the package:
+
+```{r, message=FALSE}
+library(randomForest)
+```
+
+Step 1. (5 points) Fit a random forest model with `train_US` using all of the feature variables. Use default values for all tuning parameters. Set the seed as follows:
+
+```{r}
+set.seed(99)
+form_rf <- as.formula(salary~ .)
+rf_mod <- randomForest(form_rf, train_US)
+```
+
+Step 2. (5 points) Do prediction for the test data using the trained decision.  Calculate the confusion matrix.
+
+```{r}
+confusion_rf <- test_US %>%
+  mutate(pred_rf = predict(rf_mod, newdata = test_US, type = "class"), y=salary) %>%
+  select(salary, pred_rf) %>% table()
+
+confusion_rf
+```
+
+
+Step 3. (5 points) Calculate the misclassification rate.
+
+```{r}
+misRate_rf <- 1 - sum(diag(confusion_rf))/sum(confusion_rf)
+paste("Random Forest Misclassification Rate: ", round(misRate_rf,4))
+```
+
+
+Step 4. (5 points) Calculate the true positive rate and the true negative rate for the prediction results on the test set.
+
+```{r}
+rf_truePos <- confusion_rf[1,1] / sum(confusion_rf[1,])
+paste("Random Forest True Positive: ", round(rf_truePos,4))
+rf_trueNeg <- confusion_rf[2,2] / sum(confusion_rf[2,])
+paste("Random Forest True Negative: ", round(rf_trueNeg,4))
+```
+
+Step 5. (5 points) Set `mtry=10` and `ntree=100` and do Steps 1 to 4 again. Which model is better? Set the seed as follows:
+
+```{r}
+set.seed(99)
+rf_mod2 <- randomForest(form_rf, train_US, ntree = 100, mtry = 10)
+```
+```{r}
+confusion_rf2 <- test_US %>%
+  mutate(pred_rf2 = predict(rf_mod2, newdata = test_US, type = "class"), y=salary) %>%
+  select(salary, pred_rf2) %>% table()
+
+confusion_rf2
+```
+```{r}
+misRate_rf2 <- 1 - sum(diag(confusion_rf2))/sum(confusion_rf2)
+paste("Random Forest Misclassification Rate: ", round(misRate_rf2,4))
+```
+```{r}
+rf_truePos2 <- confusion_rf2[1,1] / sum(confusion_rf2[1,])
+paste("Random Forest w/ mtry+ntree True Positive: ", round(rf_truePos2,4))
+rf_trueNeg2 <- confusion_rf2[2,2] / sum(confusion_rf2[2,])
+paste("Random Forest w/ mtry+ntree True Negative: ", round(rf_trueNeg2,4))
+```
+
+**The model with the default values for mtry and ntree performed better. It had a misclassification rate of ~0.158 compared to ~0.178 for the randomForest model with mtry 10 and ntree 100. It also had better true positive and true negative percentages.**
+
+Step 6. (5 points) Which variable is the most important? Rank the variables according to their importance. Use the first model.
+
+```{r}
+library(tibble)
+importance(rf_mod) %>%
+  as.data.frame() %>%
+  rownames_to_column() %>%
+  arrange(desc(MeanDecreaseGini))
+```
+
+**The most important variable is marital.status.**
+
+#### <span style="color:green"> Problem 6. Regularized Logistic Regression (30 points) </span>
+
+```{r}
+names(salary_US3)
+```
+
+Load the package and define the full formula for the logistic regression model as follows:
+
+```{r,message=FALSE}
+library(glmnet)
+form_full <- as.formula("salary~age+workclass+education.num+
+                      marital.status+occupation+race+sex+capital.gain+
+                      capital.loss+hours.per.week")
+```
+
+
+Step 1. (10 points) Use 5-fold cross-validation to find the "optimal" lambda. Print and plot the results. Hint: use the `cv.glmnet` function in the `glmnet` package.  Set the seed as follows:
+
+```{r}
+set.seed(99)
+predictors <- model.matrix(form_full, data = train_US)
+cv.mod <- cv.glmnet(predictors,train_US$salary,nfolds = 5, family = "binomial", type.measure = "class")
+
+cv.mod
+plot(cv.mod)
+```
+
+Step 2. (5 points) Use `glmnet` to fit a regularized logistic regression with lambda equal to `lambda.1se` found in Step 1.
+
+```{r}
+mod_lr <- glmnet(predictors,train_US$salary,family="binomial", lambda = 0.005177)
+```
+
+Step 3. (5 points) Do prediction for the test data using the trained model and calculate the misclassification rate.
+
+```{r}
+logistic.misclassrate <- function(dataset, y, fit, form){
+  misclass_lr <- dataset %>% 
+  mutate(pred.logistic = predict(fit, newx = model.matrix(form, data = dataset), 
+         type = "class")) %>% 
+  mutate(misclassify = ifelse(y != pred.logistic, 1,0)) %>%
+  summarize(misclass.rate = mean(misclassify))
+  return(misclass_lr$misclass.rate)
+}
+```
+```{r}
+lr_misRate <- logistic.misclassrate(test_US,test_US$salary,mod_lr,form_full)
+paste("Logistic Regression Misclassification Rate with lambda = 0.005177: ", round(lr_misRate,4))
+```
+
+
+Step 4. (5 points) Use `glmnet` to re-fit a regularized logistic regression with lambda equal to `lambda.min` found in Step 1 and calculate the misclassification rate for this one. Set the seed as follows:
+
+```{r}
+set.seed(99)
+
+mod_lr2 <- glmnet(predictors, train_US$salary,family="binomial", lambda=0.000383)
+lr_misRate2 <- logistic.misclassrate(test_US, test_US$salary,mod_lr2, form_full)
+paste("Logistic Regression Misclassification Rate with lambda = 0.000383: ", round(lr_misRate2,4))
+
+```
+
+Step 5. (5 points) Compare the results of the two models. Which one is better?
+
+*The model using the min lambda had a slightly better Misclassification Rate of 0.1631 compared to 0.1690 for the model using the lse-lambda. Therefore, the model with the min lambda is better.*
+
+### <span style="color:steelblue"> Part II: World Happiness Report (100 points) </span>
+#### <span style="color:orchid"> Introduction to the Data Set </span>
+
+The World Happiness Report is a landmark survey of the state of global happiness. The first report was published in 2012. We will explore the 2018 data. 
+
+- `Overall rank`: Happiness rank; numeric. Range: 1 to 156
+- `Country or region`: Character. 156 values 
+- `Score`: or subjective well-being; numeric. Range: 0 to 10
+- `GDP per capita`
+- `Social support`: the national average of the binary responses (either 0 or 1) to the GWP question "If you were in trouble, do you have relatives or friends you can count on to help you whenever you need them, or not?"
+- `Healthy life expectancy`
+- `Freedom to make life choices`: the national average of responses to the GWP
+question "Are you satisfied or dissatisfied with your freedom to choose what
+you do with your life?"
+- `Generosity`: the residual of regressing national average of response to the GWP
+question "Have you donated money to a charity in the past month?" on GDP
+per capita.
+- `Perceptions of corruption`: the national average of the survey responses to two questions in the GWP: "Is corruption widespread throughout
+the government or not" and "Is corruption widespread within businesses or
+not?"
+
+```{r}
+happiness_0 = read_csv("happiness_2018.csv", show_col_types = FALSE)
+glimpse(happiness_0)
+```
+Any missing values?
+```{r}
+sum(is.na(happiness_0))
+```
+
+No missing values!
+
+#### <span style="color:orchid"> Data Wrangling </span>
+Notice that `Perception of corruption` was coded as a character variable, which is not intuitive. Let us convert it to numeric.
+
+```{r}
+happiness_1 = happiness_0 %>% 
+  mutate(Corruption = as.numeric(`Perceptions of corruption`)) 
+```
+
+The warning message tells us missing values were produced in the conversion process.
+
+```{r}
+sum(is.na(happiness_1$Corruption))
+```
+
+```{r}
+happiness_1[is.na(happiness_1$Corruption),] %>% select(c(`Country or region`,Corruption))
+```
+
+Fortunately, only one country has missing value in `Corruption`. Remove this observation.
+
+```{r}
+happiness_2 = happiness_1 %>% drop_na()
+dim(happiness_2)
+```
+
+Since we are going to do clustering and PCA, we need to drop the "target" variable `Overall rank`.  The label variable `Country or region` has all unique values, so it is not useful in modeling. We can drop it too. The original `Perceptions of corruption` can also be removed because we already have a numeric version of it.
+
+```{r}
+happiness_3 = happiness_2 %>% 
+  select(-c(`Overall rank`, `Country or region`,`Perceptions of corruption`)) 
+head(happiness_3,3)
+```
+
+```{r}
+names(happiness_3)
+```
+
+Notice that some of the column names are very long with embedded spaces. Let us rename them.
+
+```{r}
+names(happiness_3) <- c("Score", "GDPP", "SocialSupport","LifeExp", "Freedom", "Generosity","Corruption")
+head(happiness_3,3)
+```
+
+**Use `happiness_3` to solve Problems 7 to 9.**
+
+#### <span style="color:orchid"> Exploratory Data Analysis (20 points) </span>
+#### <span style="color:green"> Problem 7: Histogram (15 points) </span>
+Create histograms for `GDPP`, `Freedom`, and `Corruption`, respectively.
+
+```{r}
+hist(happiness_3$GDPP)
+hist(happiness_3$Freedom)
+hist(happiness_3$Corruption)
+```
+
+
+#### <span style="color:green"> Problem 8: Scatterplot Matrix (5 points) </span>
+Create a scatterplot matrix for all variables in `happiness_3`. Hint: You may just use the `plot()` function.
+
+```{r message=FALSE}
+#install.packages("GGally")
+library(GGally)
+ggpairs(happiness_3)
+```
+
+If you have extra time, you may install the `GGally` package and use the `ggpairs()` function to create the scatterplot matrix.
+
+#### <span style="color:orchid"> Unsupervised Learning (80 points)  </span>
+#### <span style="color:green"> Problem 9: Principal Component Analysis (40 points) </span>
+##### Step 1: Calculate principal components (5 points)
+Calculate the principal components. Save the results and call it `pc.happiness`.
+
+```{r}
+pc.happiness <- prcomp(happiness_3, scale = TRUE)
+```
+
+##### Step 2: Calculate proportion of variance explained (PVE) (10 points)
+
+```{r}
+pc.var <- pc.happiness$sdev^2
+pve <- pc.var/sum(pc.var)
+pve[1:3]
+```
+**PVE of the first 3 principal components.**
+
+##### Step 3: Create the scree plot and identify the "elbow" (5 points)
+
+```{r}
+PC = 1:7
+myPC <- data.frame(PC, pve)
+
+ggplot(data=myPC, mapping = aes(x=PC,y=pve))+
+  geom_line(color = "black") +
+  geom_point(color = "blue", cex = 2)+
+  geom_point(aes(x=3,y=pve[3]), alpha = 0.1, color = "orange", cex = 4) +
+  labs(title="Principal Variance Explained for PC 1-7", x="Principal Components",y="PVE") +
+  scale_x_continuous(breaks = 1:7)
+```
+
+**The elbow is at PC3 as there is a sharp bend between it and PC4.**
+
+##### Step 4: Create a plot for cumulative PVE (5 points)
+Draw a horizontal reference line at `y=0.9`.
+
+```{r}
+ggplot(data=myPC, aes(x=PC,y=cumsum(pve))) +
+  geom_hline(aes(yintercept = 0.9), lty = 3, color = "blue", lwd = 1)+
+  geom_line(color="black")+
+  geom_point(color = "orange", cex = 2) +
+  labs(title="Cumulative PVE for Principal Components 1-7", x="Principal Components", y="Cumulative PVE")+
+  scale_x_continuous(breaks=1:7)
+```
+
+##### Step 5: Visualize data with the first two PCs (5 points)
+Extract the first two PCs in a data frame and name it `PC12`. Create a scatterplot using the first two principal components. 
+
+```{r}
+PC12 <- data.frame(pc.happiness$x[,1:2])
+PC12 %>%
+  ggplot(aes(x=PC1,y=PC2))+
+  geom_point()
+```
+
+Note that you don't need to do clustering yet. Can you see any pattern? 
+**No observable pattern.**
+
+#### <span style="color:green"> Problem 10: Clustering (40 points) </span>
+##### Step 1: Scale Data (5 points)
+Scale all the variables in `happiness_3` and save the new dataset as `happiness_4`.
+
+```{r}
+happiness_4 <- scale(happiness_3)
+```
+
+
+##### Step 2: Optimal Number of Clusters (5 points)
+Since we cannot figure out how many clusters are needed to group the happiness data, we need to use the `fviz_nbclust()` function to find the optimal number of clusters.
+```{r,message=FALSE}
+library(factoextra)
+fviz_nbclust(happiness_4, kmeans, method="gap_stat")
+print("Optimal Number of clusters is 3!")
+```
+
+##### Step 3: K-Means (10 points)
+Use K-Means method to cluster the data set `happiness_4`. Then, use `mutate` to add the clustering results to the data set `PC12`, which was created in Step 5 of Problem 9. Call the new data set `PC12_cluster`. Set the seed as follows:
+
+```{r}
+set.seed(99)
+km_mod <- kmeans(x=happiness_4,centers=3)
+PC12_cluster <- PC12 %>% mutate(cluster=factor(km_mod$cluster))
+```
+
+##### Step 4: Create a visualization using `PC12_cluster` (5 points)
+Create a scatterplot for `PC1` and `PC2`. Make sure to map color to `cluster`.
+
+```{r}
+PC12_cluster %>%
+  select(PC1,PC2,cluster) %>%
+  ggplot(aes(x=PC1,y=PC2,color=cluster)) +
+  geom_point()
+```
+
+
+##### Step 5: Create a visualization using `fviz_cluster` (5 points)
+Create a plot for the clustering results similar to Step 4 but using the `fviz_cluster()` function in the`factoextra` package.
+
+```{r}
+fviz_cluster(km_mod, data=PC12, xlab="PC1",ylab="PC2",ellipse.type="convex",ggtheme=theme_minimal(),main="K-means of PC1 and PC2")
+```
+
+
+##### Step 6: Adding labels back (5 points)
+Use `mutate` to add `Country or region` to `PC12_cluster`. Make sure to use the `Country or region` in `happiness_2` where the observation with missing value has been removed. 
+
+```{r}
+PC12_cluster <- PC12_cluster %>% mutate(`Country or Region` = happiness_2$`Country or region`)
+```
+
+##### Step 7: Identify those countries or regions in Cluster 1 (5 points)
+Print out those countries or regions in Cluster \#1.
+
+```{r}
+cluster1 <- PC12_cluster[which(PC12_cluster$cluster == 1),]
+cluster1$`Country or Region`
+```
+
+**These are the Countries or Regions for the points in Cluster 1.**
+
+

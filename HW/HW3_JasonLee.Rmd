@@ -1,0 +1,154 @@
+---
+title: "STAT 1261/2260 Homework 3"
+author: "Jason Lee"
+date: "2022-09-30"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+**Needed Libraries Loaded**
+```{r}
+library(ggplot2)
+library(mdsr)
+library(babynames)
+library(Hmisc)
+library(tidyverse)
+```
+
+## Lab Recreation
+ 
+### Q1
+```{r}
+BabynamesDist <- make_babynames_dist()
+
+joseph <- BabynamesDist %>% filter(name == "Joseph", sex == "M")
+name_plot <- ggplot(data = joseph, aes(x = year))
+name_plot <- name_plot +
+  geom_bar(aes(y = count_thousands * alive_prob),
+           stat = "identity", 
+           fill = "#b2d7e9", colour = "white")
+name_plot <- name_plot + geom_line(aes(y = count_thousands), size = 2) 
+name_plot <- name_plot +
+  ylab("Number of People (thousands)") + xlab(NULL)
+
+median_yob <-
+  with(joseph, wtd.quantile(year, est_alive_today, probs = 0.5))
+
+name_plot <- name_plot +
+  geom_bar(stat = "identity", colour = "white", fill = "#008fd5",
+           aes(y = ifelse(year == median_yob, est_alive_today / 1000, 0)))
+name_plot +
+  ggtitle("Age Distribution of American Boys Named Joseph") +
+  geom_text(x = 1935, y = 40, label = "Number of Josephs \n born each year") +
+  geom_text(x = 1915, y = 13, label =
+    "Number of Josephs \n born each year \n estimated to be alive \n on 1/1/2014",
+    colour = "#b2d7e9") +
+  geom_text(x = 2003, y = 40,
+    label = "The median \n living Joseph \n is 37 years old",
+            colour = "darkgray") +
+  geom_curve(x = 1995, xend = 1974, y = 40, yend = 24,
+    arrow = arrow(length = unit(0.3,"cm")), curvature = 0.5) + ylim(0, 42)
+```
+
+### Q2
+```{r}
+BabynamesDist <- make_babynames_dist()
+
+lillian <- BabynamesDist %>% filter(name == "Lillian", sex == "F")
+name_plot <- ggplot(data = lillian, aes(x = year))
+name_plot <- name_plot +
+  geom_bar(aes(y = count_thousands * alive_prob),
+           stat = "identity", 
+           fill = "#b2d7e9", colour = "white")
+name_plot <- name_plot + geom_line(aes(y = count_thousands), size = 2) 
+name_plot <- name_plot +
+  ylab("Number of People (thousands)") + xlab(NULL)
+
+median_yob <-
+  with(lillian, wtd.quantile(year, est_alive_today, probs = 0.5))
+
+medText <- paste('The median living Lillian \n is ', max(lillian$year)-median_yob, ' years old')
+
+name_plot <- name_plot +
+  geom_bar(stat = "identity", colour = "white", fill = "#008fd5",
+           aes(y = ifelse(year == median_yob, est_alive_today / 1000, 0)))
+name_plot +
+  ggtitle("Age Distribution of American Girls Named Lillian") +
+  geom_text(x = 1920, y = 15, label = "Number of Lillians \n born each year") +
+  geom_text(x = 1995, y = 12, label =
+    "Number of Lillians \n born each year \n estimated to be alive \n on 1/1/2014",
+    colour = "#b2d7e9") +
+  geom_text(x = 1950, y = 23,
+    label = medText,
+            colour = "darkgray") +
+  geom_curve(x = 1950, xend = 1966, y = 20, yend = 2,
+    arrow = arrow(length = unit(0.3,"cm")), curvature = 0.2) + ylim(0, 30)
+
+```
+
+
+## Boston Housing Data
+
+```{r}
+library(MASS)
+data("Boston")
+```
+### Q3
+**Dataset Head:**
+```{r}
+head(Boston)
+```
+**Dataset Dimensions:**
+```{r}
+dims <- dim(Boston)
+paste('Rows: ', dims[1], ' x ', 'Cols: ', dims[2])
+```
+**Dataset Names:**
+```{r}
+names(Boston)
+```
+
+### Q4
+```{r}
+bostonMedv <- ggplot(Boston, aes(x=medv, y = ..density..))+
+  geom_histogram(color = 'blue', fill = 'blue')+
+  geom_density(color = 'red')
+
+bostonMedv + labs(title = "Histogram of Median House Values in Boston", x = "Median House Value (in $1000)")
+```
+
+### Q5
+```{r}
+bostonRm <- ggplot(Boston, aes(x=rm, y = ..density..))+
+  geom_histogram(color = 'black', fill = 'white')+
+  geom_density(color = 'purple')
+
+bostonRm + labs(title = "Histogram of Avg Number of rooms per Dwelling\nin Boston", x = "Avg Number of Rooms")
+```
+
+### Q6
+```{r}
+scatterP <- ggplot(Boston, aes(x = medv, y = rm))+
+  geom_point()+
+  geom_smooth()
+
+scatterP + labs(title = 'Median House Value vs Avg number of Rooms\nper House in Boston', x = 'Median House Value ($1000s)', y = 'Avg Number Rooms')
+```
+
+### Q7
+```{r}
+rm_cat = as.factor(round(Boston$rm))
+Boston2 <- data.frame(Boston$medv, rm_cat)
+head(Boston2)
+```
+Boxplot:
+```{r}
+ggplot(Boston2, aes(y = Boston.medv, x = rm_cat))+
+  geom_boxplot()
+```
+
+#### **Why do we need to Convert?**
+If we don't convert rounded rm values into a categorical variable with the factor() function, we will have a continuous range of rm values that would each be considered its own group. The resulting boxplot graph doesn't show side-by-side comparisons in this case, and only shows a *single* boxplot ranging over the entire x domain (or all the rm values). 

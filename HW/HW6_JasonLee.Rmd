@@ -1,0 +1,132 @@
+---
+title: "STAT1261/2260 Homework 6"
+author: "Jason Lee"
+date: "2022-10-28"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message = FALSE}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(kableExtra)
+library(car)
+
+ebsurvey <- read_csv("https://uoepsy.github.io/data/science-faith-attitude.csv")
+print("Data successfully loaded into 'ebsurvey'!")
+```
+```{r}
+ebsurvey_red <- ebsurvey %>%
+  select("kstot", "age", "toomuchscience")
+
+ebsurvey_red <- ebsurvey_red %>% 
+  rename(science_score = kstot,
+         attitude = toomuchscience)
+
+ebsurvey1 <- na.omit(ebsurvey_red)
+dim(ebsurvey1)
+```
+
+## Exercise 1: Sample Statistics 
+a) Histogram
+```{r}
+ggplot(data = ebsurvey1, mapping = aes(x = science_score, y = ..density..)) +
+  geom_histogram(color = "black", fill = "lightblue", binwidth = 1) +
+  geom_density(kernel = "gaussian", color = "red")
+```
+
+b) Summary Statistic Table
+```{r}
+ebsurvey1 %>%
+    summarise(Range = max(science_score) - min(science_score),
+              Q1 = quantile(science_score, 0.25),
+              Median = quantile(science_score, 0.5),
+              Q3 = quantile(science_score, 0.75),
+              Mean = mean(science_score),
+              SD = sd(science_score)) %>%
+    kable(digits = 2,
+          caption = 'Descriptive Statistics of Science Score') %>%
+    kable_styling(full_width = FALSE)
+```
+
+## Exercise 2: Bootstrap
+
+```{r message = FALSE}
+library(modelr)
+library(purrr)
+library(car)
+library(broom)
+
+boot <- modelr::bootstrap(ebsurvey1, 1500)
+models <- map(boot$strap, ~ lm(attitude ~ science_score + age, data = .))
+models.tb <- map_df(models,broom::tidy,.id="id")
+models.tb
+```
+```{r}
+interceptCI <- models.tb %>%
+  filter(term == "(Intercept)") %>%
+  summarize(Med=quantile(estimate,0.5),LL=quantile(estimate,0.025),UL=quantile(estimate,0.975))
+```
+
+```{r}
+scoreCI <- models.tb %>% 
+  filter(term=="science_score") %>% 
+  summarize(Med=quantile(estimate,0.5),LL=quantile(estimate,0.025),UL=quantile(estimate,0.975))
+```
+
+```{r}
+ageCI <- models.tb %>% 
+  filter(term=="age") %>% 
+  summarize(Med=quantile(estimate,0.5),LL=quantile(estimate,0.025),UL=quantile(estimate,0.975))
+```
+
+```{r}
+confidenceTable <- rbind(interceptCI, scoreCI, ageCI)
+confidenceTable <- as.data.frame(confidenceTable)
+row.names(confidenceTable) <- c("Intercept", "science_score", "age")
+kable(confidenceTable, digits = 4, col.names = c("Estimate", "2.5%", "97.5%"), row.names = TRUE, caption = "Bootstrapped Data 95% Confidence Intervals") %>%
+  kable_styling(full_width = FALSE)
+```
+
+## Exercise 3: Bootstrap Sample Visualization 
+Histograms for Intercept, Age, and Science_Score from the Bootstrapped Data created. The dotdashed lines represent the median estimate. 
+
+```{r}
+models_red <- models.tb %>%
+  select(term, estimate)
+
+age <- models_red %>%
+  filter(term == "age")
+
+science_score <- models_red %>%
+  filter(term == "science_score")
+
+intercepts <- models_red %>%
+  filter(term == "(Intercept)")
+  
+bootHist <- tibble(Intercept = intercepts$estimate, Age = age$estimate, Science_Score = science_score$estimate)
+```
+
+```{r}
+ggplot(data = bootHist, mapping = aes(x = Age)) +
+  geom_histogram(aes(y=..density..), binwidth = 0.0005, color = "black", fill = "steelblue") + 
+  geom_density(color = "red")+
+  geom_vline(xintercept = confidenceTable$Med[3], color = "gold", linetype = "dotdash")
+```
+
+```{r}
+ggplot(data = bootHist, mapping = aes(x = Science_Score)) +
+  geom_histogram(aes(y=..density..), binwidth = 0.002, color = "black", fill = "light blue") + 
+  geom_density(color = "red")+
+  geom_vline(xintercept = confidenceTable$Med[2], color = "black", linetype = "dotdash")
+```
+
+```{r}
+ggplot(data = bootHist, mapping = aes(x = Intercept)) +
+  geom_histogram(aes(y=..density..), binwidth = 0.05, color = "black", fill = "sky blue") + 
+  geom_density(color = "orange") +
+  geom_vline(xintercept = confidenceTable$Med[1], color = "red", linetype = "dotdash")
+```
